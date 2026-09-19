@@ -10,6 +10,7 @@ from .auth import login_required
 from app.models import db, Exam, Correction
 from app.omr.template_loader import load_template
 from app.services.image_processor import load_image, process_card, ImageProcessingError
+from app.services.cpf_detector import get_digit_recognizer
 from app.services.cpf_validator import normalize_cpf, validate_cpf
 from app.services.correction_service import compare_answers, apply_manual_answers, find_duplicates
 bp=Blueprint('correction',__name__)
@@ -55,7 +56,7 @@ def capture():
             try:
                 image=load_image(uploaded.stream)
                 discard_work();session['work_token']=secrets.token_hex(16);session['exam_id']=exam.id
-                path=Path(current_app.config['WORK_DIR'])/session['work_token'];path.mkdir(mode=0o700)
+                path=Path(current_app.config['WORK_DIR'])/session['work_token'];path.mkdir(parents=True,mode=0o700)
                 cv2.imwrite(str(path/'photo.jpg'),image)
                 return redirect(url_for('correction.preview'))
             except ImageProcessingError as e: flash(str(e),'error')
@@ -85,7 +86,7 @@ def process():
     if (path/'draft.json').exists(): return redirect(url_for('correction.review'))
     try:
         template=load_template(exam.template_id)
-        result=process_card(path/'photo.jpg',template,current_app.extensions['digit_recognizer'],path/'debug' if current_app.config['DEBUG_OMR'] else None)
+        result=process_card(path/'photo.jpg',template,get_digit_recognizer(current_app),path/'debug' if current_app.config['DEBUG_OMR'] else None)
         result.update(exam_id=exam.id,key=exam.answer_key.answers_json,submission_token=secrets.token_hex(32),cpf_manually_changed=False)
         save_draft(result)
         return redirect(url_for('correction.review'))

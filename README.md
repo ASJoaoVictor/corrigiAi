@@ -30,17 +30,17 @@ Alternativamente, copie `.env.example` para `.env` e configure:
 - `COOKIE_SECURE=false`: para HTTP na rede local; use `true` quando disponibilizar via HTTPS.
 - `PORT=5000`: porta do servidor.
 
-Hashes com `$` podem ser colados diretamente no `.env`; não os passe sem proteção por um shell. O programa recusa iniciar com `SECRET_KEY=change-me`, chave ausente ou senha sem formato de hash Werkzeug. `FLASK_ENV` é apenas uma indicação no exemplo; o servidor **não ativa debugger**, mesmo em desenvolvimento.
+Hashes com `$` podem ser colados diretamente no `.env`; não os passe sem proteção por um shell. O programa recusa iniciar com `SECRET_KEY=change-me`, chave ausente ou senha sem formato de hash Werkzeug. O servidor **não ativa debugger**, mesmo em desenvolvimento.
 
 `prepare_ocr.py` baixa os modelos do EasyOCR uma vez em `instance/ocr-models/`. Depois, o reconhecimento funciona localmente, sem internet e sem enviar CPF ou imagens. Se os modelos estiverem ausentes, o sistema solicita preenchimento manual. O primeiro carregamento do OCR consome memória e pode levar alguns segundos.
 
-Abra `http://localhost:5000`. SQLite é inicializado explicitamente pelo comando `init-db`, que não apaga os dados existentes. O banco fica em `instance/opi.sqlite`. Nenhum gabarito é criado automaticamente.
+Abra `http://localhost:5000`. SQLite é inicializado explicitamente pelo comando `init-db`, que não apaga os dados existentes. O banco fica em `instance/database.db`. Nenhum gabarito é criado automaticamente.
 
 ## Acessar pelo celular
 
 Conecte computador e celular à mesma rede Wi-Fi. Execute `python run.py`; o servidor escuta em `0.0.0.0:5000`. Descubra o IP do computador (`hostname -I` no Linux) e abra, por exemplo, `http://192.168.1.20:5000` no celular. Libere a porta 5000 no firewall local, se necessário.
 
-A captura usa `input type=file`, `accept=image/...` e `capture=environment`, indicando a câmera traseira. O navegador/sistema operacional pode oferecer também a galeria. Não depende de `getUserMedia`, portanto funciona no HTTP local. Envie JPEG, PNG ou WebP; HEIC não é aceito. O limite é 12 MB e 25 megapixels; imagens são orientadas pelo EXIF, redimensionadas e regravadas sem metadados.
+A captura usa `input type=file`, `accept=image/...` e `capture=environment`, indicando a câmera traseira. O navegador/sistema operacional pode oferecer também a galeria. Não depende de `getUserMedia`, portanto funciona no HTTP local. Envie JPEG, PNG ou WebP; HEIC não é aceito. O navegador preserva a proporção, limita o maior lado a 2000 pixels e converte para JPEG com qualidade entre 82% e 92%, buscando até 3,5 MB. O backend limita a requisição completa a 4 MB e a imagem a 25 megapixels; imagens são orientadas pelo EXIF, redimensionadas e regravadas sem metadados.
 
 O servidor Flask embutido serve para desenvolvimento/rede de testes. Para exposição pública, use servidor WSGI, HTTPS e `COOKIE_SECURE=true`. Não exponha o debugger. Mantenha banco e temporários com acesso restrito e faça backup protegido do SQLite, pois ele contém CPF.
 
@@ -181,3 +181,37 @@ Ele reconhece 11 dígitos impressos sintéticos dentro das células e verifica o
 - O SQLite atende uso pequeno. Não há múltiplos usuários, filas, dashboard ou banco de alunos.
 # corrigiAi
 # corrigiAi
+
+
+## Deploy na Vercel
+
+1. Conecte o repositório GitHub à Vercel e selecione a raiz do projeto.
+2. Use a detecção Flask, sem Build Command customizado. O link `public/static` expõe os arquivos existentes de `app/static` no caminho `/static` para a CDN, sem duplicar CSS/JavaScript nem mudar o layout. Preserve esse link simbólico no Git. `index.py` exporta `app = create_app()`; `run.py` continua disponível para execução local, sem debugger.
+3. Configure Environment Variables antes do deploy:
+
+   ```dotenv
+   SECRET_KEY=<chave aleatória forte>
+   ADMIN_USERNAME=admin
+   ADMIN_PASSWORD_HASH=<hash Werkzeug scrypt: ou pbkdf2:>
+   DATABASE_URL=<URL do banco>
+   COOKIE_SECURE=true
+   DEBUG_OMR=false
+   ```
+
+   Gere o hash conforme a seção Iniciar; não configure senha em texto puro. `.env.example` não contém segredos e `.env` está ignorado pelo Git. Localmente, `DATABASE_URL` vazio usa `instance/database.db`. URLs SQLite relativas são resolvidas pelo Flask-SQLAlchemy dentro de `instance`, portanto evite `sqlite:///instance/database.db` (duplicaria `instance`).
+
+4. Somente para **TESTE temporário**, configure `DATABASE_URL=sqlite:////tmp/database.db`.
+
+**SQLite em /tmp NÃO É PERSISTENTE NA VERCEL.** Dados e tabelas podem desaparecer entre execuções, instâncias e deploys. Para produção com histórico permanente, utilize banco externo persistente, por exemplo PostgreSQL, com `DATABASE_URL` e o driver SQLAlchemy correspondente instalado. Não há migração automática de dados.
+
+Inicialize as tabelas explicitamente com `flask --app index init-db`, em um ambiente com acesso ao banco configurado. O comando usa `create_all`, não apaga tabelas nem dados. Executá-lo localmente contra PostgreSQL externo prepara esse banco; executá-lo localmente ou no build contra `/tmp/database.db` **não prepara o SQLite da função em execução**. Um teste SQLite completo requer inicialização na mesma instância temporária; não há endpoint público nem inicialização automática do banco. Na ausência de tabelas, páginas que consultam o banco mostram uma mensagem com orientação para inicialização.
+
+Com `VERCEL` definido, fotos e rascunhos usam `/tmp/work` e o diretório dos modelos é `/tmp/ocr-models`. Fotos são comprimidas no celular antes do envio, preservando a proporção e detalhes para OCR/OMR. O backend aceita requisições de até 4 MB, incluindo o formulário. Sem JavaScript, envie uma foto já abaixo desse limite. `DEBUG_OMR=false` não gera imagens de depuração. Ao confirmar, descartar ou sair, o trabalho temporário é eliminado; a limpeza remove trabalhos expirados após uma hora quando há novas requisições. Só dados da correção vão para o banco.
+
+**Limitação do fluxo em várias requisições:** `/tmp` não é compartilhado entre instâncias e pode desaparecer. Uma foto enviada pode não estar disponível na prévia, processamento ou revisão seguinte; nesse caso será necessário repetir a captura. Um banco externo resolve a persistência do histórico, mas não essa limitação dos rascunhos. Garantir esse fluxo em produção serverless exigiria armazenamento temporário compartilhado com expiração e exclusão, uma adaptação adicional não implementada aqui.
+
+EasyOCR é carregado sob demanda, apenas no reconhecimento do CPF; login, início, gabaritos e histórico não carregam EasyOCR/PyTorch. O reconhecedor é reutilizado por instância, com trava para inicialização concorrente. Downloads automáticos permanecem desativados (`download_enabled=False`), inclusive nos cold starts. O download é explícito: `python scripts/prepare_ocr.py` prepara os modelos em `instance/ocr-models` localmente ou `/tmp/ocr-models` com `VERCEL` definido. Importar esse script não carrega OCR nem baixa arquivos. Na Vercel, `/tmp/ocr-models` começa vazio: sem provisionar os modelos nessa instância, o sistema pede CPF manualmente. Modelos locais em `instance` não são automaticamente transferidos para `/tmp`.
+
+EasyOCR/PyTorch têm dependências grandes; carregamento sob demanda reduz trabalho no startup, mas não o tamanho do pacote instalado. O deploy ainda depende dos limites de tamanho, memória e duração da função. Se o pacote exceder o limite contratado, será necessário um ambiente compatível com esses recursos ou separar o OCR. Nenhuma garantia de deploy real é inferida dos testes locais.
+
+Referências: [Flask na Vercel](https://vercel.com/docs/frameworks/backend/flask) e [limites das funções](https://vercel.com/docs/functions/limitations).

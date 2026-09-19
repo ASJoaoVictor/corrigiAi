@@ -14,7 +14,7 @@ from app import create_app
 from app.models import db,Exam,AnswerKey
 
 with tempfile.TemporaryDirectory(prefix='opi-browser-') as directory:
-    app=create_app(dict(TESTING=True,SECRET_KEY='browser-test-only',ADMIN_PASSWORD_HASH=generate_password_hash('browser-test-password'),SQLALCHEMY_DATABASE_URI='sqlite:///'+directory+'/test.sqlite',WORK_DIR=directory+'/work',DEBUG_OMR=False))
+    app=create_app(dict(TESTING=True,SECRET_KEY='browser-test-only',ADMIN_USERNAME='admin',ADMIN_PASSWORD_HASH=generate_password_hash('browser-test-password'),SQLALCHEMY_DATABASE_URI='sqlite:///'+directory+'/test.sqlite',WORK_DIR=directory+'/work',DEBUG_OMR=False))
     with app.app_context():
         db.create_all();e=Exam(name='OPI Fundamental 2026');db.session.add(e);db.session.flush();db.session.add(AnswerKey(exam_id=e.id,answers_json={str(i):'A' for i in range(1,31)}));db.session.commit()
     server=make_server('127.0.0.1',5087,app,threaded=True)
@@ -31,6 +31,40 @@ with tempfile.TemporaryDirectory(prefix='opi-browser-') as directory:
                 page.goto('http://127.0.0.1:5087/login');check('login')
                 page.get_by_label('Usuário').fill('admin');page.get_by_label('Senha',exact=True).fill('browser-test-password');page.get_by_role('button',name='Entrar').click();check('home')
                 page.get_by_role('link',name='Tirar foto de cartão',exact=True).click();check('capture')
+                if width == 360:
+                    compressed = page.evaluate("""async () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 4000; canvas.height = 3000;
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 4000, 3000);
+                        ctx.fillStyle = '#000'; ctx.font = '80px sans-serif';
+                        ctx.fillText('12345678909', 100, 150);
+                        const original = await new Promise(r => canvas.toBlob(r, 'image/png'));
+                        const file = new File([original], 'large.png', {type: 'image/png'});
+                        const result = await compressPhoto(file);
+                        const bitmap = await createImageBitmap(result);
+                        const dimensions = [bitmap.width, bitmap.height];
+                        bitmap.close();
+                        const decode = window.createImageBitmap;
+                        window.createImageBitmap = undefined;
+                        const fallback = await compressPhoto(file);
+                        window.createImageBitmap = decode;
+                        const toBlob = HTMLCanvasElement.prototype.toBlob;
+                        HTMLCanvasElement.prototype.toBlob = function(callback) {
+                            callback(new Blob([new Uint8Array(4 * 1024 * 1024)]));
+                        };
+                        let rejected = false;
+                        try { await compressPhoto(file); }
+                        catch (error) { rejected = error.message.includes('grande demais'); }
+                        finally { HTMLCanvasElement.prototype.toBlob = toBlob; }
+                        return {dimensions, size: result.size, type: result.type,
+                                fallbackSize: fallback.size, rejected};
+                    }""")
+                    assert compressed['dimensions'] == [2000, 1500], compressed
+                    assert compressed['type'] == 'image/jpeg', compressed
+                    assert 0 < compressed['size'] <= 3.5 * 1024 * 1024, compressed
+                    assert 0 < compressed['fallbackSize'] <= 3.5 * 1024 * 1024, compressed
+                    assert compressed['rejected'], compressed
                 page.locator('#photo').set_input_files('app/omr/reference.png')
                 page.get_by_role('button',name='Conferir foto').click();check('preview')
                 page.get_by_role('button',name='Usar foto e processar cartão').click();page.wait_for_url('**/review');check('review')

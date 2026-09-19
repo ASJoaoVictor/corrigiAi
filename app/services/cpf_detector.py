@@ -46,3 +46,12 @@ def detect_cpf(gray,template,recognizer):
     status=('valid' if validate_cpf(value) else 'invalid') if all(digits) else ('uncertain' if any(digits) else 'not_detected')
     log.info('[CPF] Reconhecimento concluído: %s',status)
     return dict(value=value if any(digits) else '',status=status,message='Confira os 11 dígitos antes de confirmar.')
+
+
+def get_digit_recognizer(app):
+    with app.extensions['digit_recognizer_lock']:
+        recognizer = app.extensions.get('digit_recognizer')
+        if recognizer is None:
+            recognizer = EasyOCRDigitRecognizer(app.config['OCR_MODEL_DIR'])
+            app.extensions['digit_recognizer'] = recognizer
+        return recognizer
