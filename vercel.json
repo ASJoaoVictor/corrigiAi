@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "index.py": {
+      "excludeFiles": "{.venv*/**,instance/**,tests/**,docs/**,.pytest_cache/**,uploads/**,processed/**,playwright-report/**,Frame 1.pdf}"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/database.db}
+      WORK_DIR: /tmp/corrigiai
+      OCR_MODEL_DIR: /app/ocr-models
+      FLASK_DEBUG: "false"
+      DEBUG_OMR: "false"
+    volumes:
+      - corrigiai_data:/app/data
+    tmpfs:
+      - /tmp/corrigiai:uid=10001,gid=10001,mode=0700,size=256m
+    restart: unless-stopped
+    stop_grace_period: 40s
+
+volumes:
+  corrigiai_data:

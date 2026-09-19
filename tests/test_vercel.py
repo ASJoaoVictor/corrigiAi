@@ -17,6 +17,8 @@ def config_env(monkeypatch):
     monkeypatch.setattr('app.load_dotenv', lambda: None)
     monkeypatch.delenv('VERCEL', raising=False)
     monkeypatch.delenv('DATABASE_URL', raising=False)
+    monkeypatch.delenv('WORK_DIR', raising=False)
+    monkeypatch.delenv('OCR_MODEL_DIR', raising=False)
     monkeypatch.setenv('SECRET_KEY', 'test-only')
     monkeypatch.setenv('ADMIN_PASSWORD_HASH', 'pbkdf2:sha256:1$salt$hash')
 

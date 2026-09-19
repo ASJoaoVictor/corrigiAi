@@ -40,8 +40,8 @@ def create_app(test_config=None):
         SESSION_COOKIE_SECURE=os.getenv('COOKIE_SECURE','false').lower()=='true',
         PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
         DEBUG_OMR=os.getenv('DEBUG_OMR','false').lower()=='true',
-        WORK_DIR=str(base_dir/'work'),
-        OCR_MODEL_DIR=str(base_dir/'ocr-models')
+        WORK_DIR=os.getenv('WORK_DIR') or str(base_dir/'work'),
+        OCR_MODEL_DIR=os.getenv('OCR_MODEL_DIR') or str(base_dir/'ocr-models')
     )
     if test_config: app.config.update(test_config)
     if not app.config['SECRET_KEY'] or app.config['SECRET_KEY']=='change-me':
@@ -64,6 +64,10 @@ def create_app(test_config=None):
     from .routes.correction import bp as correction
     for bp in (auth,main,keys,correction): app.register_blueprint(bp)
     app.jinja_env.filters['mask_cpf']=mask_cpf
+    @app.get('/health')
+    def health():
+        return {'status': 'ok'}
+
     @app.context_processor
     def csrf_context():
         if 'csrf_token' not in session: session['csrf_token']=secrets.token_hex(32)

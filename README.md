@@ -215,3 +215,145 @@ EasyOCR é carregado sob demanda, apenas no reconhecimento do CPF; login, iníci
 EasyOCR/PyTorch têm dependências grandes; carregamento sob demanda reduz trabalho no startup, mas não o tamanho do pacote instalado. O deploy ainda depende dos limites de tamanho, memória e duração da função. Se o pacote exceder o limite contratado, será necessário um ambiente compatível com esses recursos ou separar o OCR. Nenhuma garantia de deploy real é inferida dos testes locais.
 
 Referências: [Flask na Vercel](https://vercel.com/docs/frameworks/backend/flask) e [limites das funções](https://vercel.com/docs/functions/limitations).
+
+### Tamanho do pacote de deploy
+
+`.vercelignore` e `vercel.json` excluem ambientes virtuais, dados locais e arquivos de teste/documentação do deploy. Essas exclusões não removem as dependências instaladas a partir de `requirements.txt`: EasyOCR depende de PyTorch, cuja instalação padrão pode trazer bibliotecas NVIDIA de vários GB mesmo com `gpu=False` no código. Lazy loading não reduz o tamanho do pacote. Se o build ultrapassar 500 MB, essas exclusões sozinhas não garantem a solução; é necessário adequar a instalação do OCR ou executá-lo em outro ambiente.
+
+## Docker
+
+Requisitos: Docker Engine e plugin Docker Compose (`docker compose version`), internet
+no primeiro build e espaço para as dependências CPU do PyTorch e modelos EasyOCR.
+A imagem usa Python 3.12 slim, OpenCV headless e somente `libgomp1` como biblioteca
+Linux adicional. Não instala CUDA nem servidor gráfico.
+
+Copie `.env.example` para `.env` (sem sobrescrever uma configuração existente).
+Gere `SECRET_KEY` e `ADMIN_PASSWORD_HASH` pelos comandos da seção **Iniciar**.
+Se não tiver Python local, gere os valores depois de `docker compose build`:
+
+```bash
+docker compose run --rm --no-deps web python -c 'import secrets; print(secrets.token_hex(32))'
+docker compose run --rm --no-deps web python -c 'from getpass import getpass; from werkzeug.security import generate_password_hash; print(generate_password_hash(getpass("Senha: ")))'
+```
+
+Cole os valores no `.env`. **Coloque o hash entre aspas simples**, assim:
+`ADMIN_PASSWORD_HASH='<hash gerado>'`. Isso preserva os caracteres `$` durante a
+[leitura pelo Compose](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
+Não use o texto de exemplo como credencial. Proteja o arquivo com `chmod 600 .env`.
+Use `COOKIE_SECURE=false` para HTTP local. Compose desativa `FLASK_DEBUG` e `DEBUG_OMR`.
+
+`DATABASE_URL` vazio usa `sqlite:////app/data/database.db` no Compose. Se preencher,
+use esse caminho para o Docker; uma URL relativa como `sqlite:///database.db` aponta
+para `instance` e **fica fora do volume persistente**. Fora do Docker, deixe vazio
+ou use `sqlite:///database.db` para continuar com o banco local. Bancos locais
+existentes não são copiados nem migrados automaticamente para o volume.
+
+```bash
+docker compose up --build
+# Em outro terminal, crie somente as tabelas ausentes:
+docker compose exec web flask --app run.py init-db
+```
+
+Abra `http://localhost:8000`. Para executar em segundo plano:
+
+```bash
+docker compose up -d --build
+docker compose exec web flask --app run.py init-db
+docker compose ps
+docker compose logs -f web
+```
+
+Gunicorn executa `app:create_app()` em `0.0.0.0:8000`, com **um worker síncrono**,
+para limitar memória do OCR e concorrência de escrita no SQLite. O timeout de
+180 segundos tolera o primeiro carregamento do OCR; uma correção ocupa esse worker.
+O endpoint público `/health` retorna apenas `{"status":"ok"}` e alimenta o
+healthcheck, sem consultar banco ou carregar OCR. Durante processamento demorado,
+o healthcheck pode atrasar; ele verifica disponibilidade HTTP, não prontidão do banco.
+Veja a documentação de [application factory do Gunicorn](https://docs.gunicorn.org/en/21.0.1/run.html).
+
+O processo usa UID/GID 10001, sem root. O volume nomeado `corrigiai_data` é montado
+em `/app/data`; o nome real recebe o prefixo do projeto Compose. Mantenha o mesmo
+nome de projeto/diretório nos próximos deploys para reutilizar o volume.
+Volumes novos recebem as permissões do diretório da imagem. Ao restaurar arquivos
+ou usar um bind mount, garanta escrita pelo UID/GID 10001.
+
+Fotos, rascunhos e debug ficam em `/tmp/corrigiai`, um tmpfs limitado a 256 MB,
+separado do banco. A limpeza existente permanece: confirmação, descarte, logout
+ou expiração. Parar o container também elimina esses temporários; revisões em
+andamento precisam ser refeitas. Dimensione esse limite conforme o uso.
+`WORK_DIR` e `OCR_MODEL_DIR` são configuráveis fora do Compose, preservando os
+padrões locais e da Vercel.
+
+Os modelos OCR são baixados explicitamente em `/app/ocr-models` durante o build,
+sem credenciais da aplicação. Ficam na imagem e são reutilizados em cada container;
+rebuilds podem repetir o download se a camada de cache for invalidada. Não há
+volume de fotos ou de modelos junto ao SQLite. O reconhecedor continua lazy:
+somente a correção carrega EasyOCR, reutilizando-o no processo. Requisições nunca
+baixam modelos. O primeiro build precisa acessar PyPI, PyTorch e o servidor dos
+modelos; se o download falhar, o build falha em vez de entregar OCR incompleto.
+
+Parar e reconstruir:
+
+```bash
+docker compose down
+docker compose up -d --build
+```
+
+Esses comandos preservam o volume e seus gabaritos, correções e histórico.
+**ATENÇÃO: `docker compose down -v` remove os volumes e pode apagar todo o SQLite.**
+Não o use na operação normal. Remover manualmente volumes também apaga os dados.
+
+### Backup do SQLite
+
+Use a API de backup do SQLite para obter uma cópia consistente, inclusive com a
+aplicação em execução. Para o caminho padrão do Docker:
+
+```bash
+mkdir -p backups
+chmod 700 backups
+docker compose exec -T web python -c 'import sqlite3; src=sqlite3.connect("file:/app/data/database.db?mode=ro", uri=True); dst=sqlite3.connect("/tmp/database-backup.db"); src.backup(dst); dst.close(); src.close()'
+docker compose cp web:/tmp/database-backup.db backups/database-backup.db
+chmod 600 backups/database-backup.db
+docker compose exec -T web python -c 'from pathlib import Path; Path("/tmp/database-backup.db").unlink()'
+```
+
+Esse exemplo sobrescreve o backup anterior; renomeie a cópia para guardar versões.
+Proteja os backups, pois contêm CPF, e mantenha uma cópia fora da VM. Se alterar
+`DATABASE_URL`, ajuste a origem. Não copie apenas o `.db` durante escritas com
+`cp`: prefira o backup consistente acima. Para restaurar, pare a aplicação,
+restaure a cópia no volume e garanta proprietário 10001:10001 antes de reiniciar.
+
+### Validação no Docker
+
+```bash
+docker compose run --rm --no-deps -e DATABASE_URL=sqlite:// web pytest -q
+```
+
+Os testes usam bancos temporários e não baixam modelos OCR. Para validar a
+persistência manualmente, inicialize o banco, faça login e cadastre um gabarito;
+anote seu nome, execute `docker compose down` e `docker compose up -d --build`,
+e confirme que ele permanece em Gabaritos. Repita com uma correção no Histórico.
+`init-db` pode ser repetido: usa `create_all()`, sem apagar tabelas ou dados.
+
+## Deploy em Azure VM
+
+1. Crie uma VM Linux, por exemplo Ubuntu, e instale Docker Engine e o plugin
+   Docker Compose conforme a documentação oficial da distribuição/Docker.
+2. Clone o repositório e entre no diretório do projeto.
+3. Copie `.env.example` para `.env`, gere a chave e o hash como descrito acima e
+   configure `DATABASE_URL=sqlite:////app/data/database.db`.
+4. Execute `docker compose up -d --build` e
+   `docker compose exec web flask --app run.py init-db`.
+5. Confira `docker compose ps`, `docker compose logs -f web` e `/health`.
+6. Garanta que o armazenamento do Docker/volume esteja em **disco persistente da
+   VM**, com backups externos. Não use disco temporário da Azure nem `/tmp` para
+   SQLite. Persistência de volume não protege contra exclusão da VM/disco.
+7. Configure posteriormente domínio, Nginx e HTTPS na infraestrutura. Flask e
+   Gunicorn continuam em HTTP interno; não é necessário certificado no Flask.
+
+Quando Nginx estiver na mesma VM, restrinja o mapeamento para
+`127.0.0.1:8000:8000`, exponha somente as portas necessárias no firewall/NSG e use
+`COOKIE_SECURE=true` com HTTPS. Configure no proxy limite de upload compatível com
+4 MB e timeout compatível com o processamento. Não habilite confiança irrestrita
+em headers de proxy; a aplicação atual não precisa disso para seu fluxo normal.
+Nenhuma configuração Azure, Nginx ou PostgreSQL foi adicionada à aplicação.
