@@ -3,6 +3,13 @@ import re
 def normalize_cpf(value):
     return re.sub(r'[^0-9]', '', str(value or ''))
 
+def format_cpf(value):
+    """Retorna o CPF no formato usado pelo cadastro externo."""
+    cpf = normalize_cpf(value)
+    if len(cpf) != 11:
+        return cpf
+    return f'{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}'
+
 def validate_cpf(value):
     cpf = normalize_cpf(value)
     if len(cpf) != 11 or len(set(cpf)) == 1:

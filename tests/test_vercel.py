@@ -24,12 +24,8 @@ def config_env(monkeypatch):
 
 
 def test_local_defaults(config_env):
-    application = create_app()
-    assert application.config['WORK_DIR'] == str(Path(application.instance_path) / 'work')
-    assert application.config['OCR_MODEL_DIR'] == str(Path(application.instance_path) / 'ocr-models')
-    assert application.config['SQLALCHEMY_DATABASE_URI'] == f'sqlite:///{application.instance_path}/database.db'
-    assert application.config['MAX_CONTENT_LENGTH'] == 4 * 1024 * 1024
-    assert not application.debug
+    with pytest.raises(RuntimeError, match='DATABASE_URL'):
+        create_app()
 
 
 def test_vercel_defaults(config_env, monkeypatch):
@@ -110,7 +106,7 @@ def test_missing_tables_message(config_env):
         session['authenticated'] = True
     response = client.get('/history')
     assert response.status_code == 503
-    assert 'flask --app index init-db' in response.text
+    assert 'flask --app run.py init-db' in response.text
 
 
 def test_debug_disabled_does_not_write_images(client, app):
@@ -132,7 +128,7 @@ def test_init_db_preserves_records(app):
 def test_startup_does_not_construct_recognizer(config_env, monkeypatch):
     constructor = Mock(side_effect=AssertionError('OCR initialized at startup'))
     monkeypatch.setattr(cpf_detector, 'EasyOCRDigitRecognizer', constructor)
-    application = create_app()
+    application = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite://'})
     assert application.extensions['digit_recognizer'] is None
     constructor.assert_not_called()
 

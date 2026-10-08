@@ -21,9 +21,9 @@ RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/c
 COPY . .
 RUN groupadd --gid 10001 appuser \
     && useradd --uid 10001 --gid appuser --create-home appuser \
-    && mkdir -p /app/data /app/instance /app/ocr-models /tmp/corrigiai \
-    && chown -R appuser:appuser /app/data /app/instance /app/ocr-models /tmp/corrigiai \
-    && chmod 700 /app/data /tmp/corrigiai
+    && mkdir -p /app/instance /app/ocr-models /tmp/corrigiai \
+    && chown -R appuser:appuser /app/instance /app/ocr-models /tmp/corrigiai \
+    && chmod 700 /tmp/corrigiai
 
 USER appuser
 # Cached in the image: requests never download models or load OCR at startup.

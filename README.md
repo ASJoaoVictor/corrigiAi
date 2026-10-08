@@ -21,7 +21,7 @@ A organização confere e ajusta a leitura antes de confirmar. O resultado é a 
 ## Tecnologias
 
 - **Python e Flask:** aplicação web, com páginas em Jinja2.
-- **Flask-SQLAlchemy e SQLite:** armazenamento dos gabaritos e resultados.
+- **Flask-SQLAlchemy e PostgreSQL (Supabase):** armazenamento dos gabaritos e resultados.
 - **OpenCV, NumPy e Pillow:** processamento das imagens.
 - **EasyOCR e PyTorch:** reconhecimento dos dígitos do CPF.
 - **HTML, CSS e JavaScript:** interface adaptada ao celular.
@@ -71,7 +71,7 @@ Ele solicita o usuário e uma senha de pelo menos 10 caracteres, gera a `SECRET_
 
 O assistente não sobrescreve um `.env` existente. Se já houver um, confira `SECRET_KEY`, `ADMIN_USERNAME` e `ADMIN_PASSWORD_HASH`; use `.env.example` como referência das opções disponíveis.
 
-Para o uso local, mantenha `COOKIE_SECURE=false`, `DEBUG_OMR=false` e `PORT=5000`. Deixe `DATABASE_URL` vazio ou ausente para usar o SQLite padrão.
+Para o uso local, mantenha `COOKIE_SECURE=false`, `DEBUG_OMR=false` e `PORT=5000`. Configure `DATABASE_URL` com a string de conexão PostgreSQL do projeto no Supabase, por exemplo `postgresql+psycopg://USER:PASSWORD@HOST:PORT/DATABASE`. A URL é uma credencial: mantenha-a somente no `.env`.
 
 Prepare os modelos de reconhecimento do CPF:
 
@@ -89,7 +89,9 @@ Inicialize as tabelas antes de usar a aplicação:
 flask --app run.py init-db
 ```
 
-Por padrão, o sistema usa SQLite e salva o banco em `instance/database.db`. Executar o comando novamente cria apenas as tabelas ausentes, sem apagar os dados existentes. Os gabaritos são cadastrados pela interface.
+O corrigiAi usa PostgreSQL hospedado no Supabase, acessado diretamente pelo Flask-SQLAlchemy. Executar o comando cria apenas as tabelas próprias do corrigiAi (`Exam`, `AnswerKey` e `Correction`), sem apagar os dados existentes e sem criar ou modificar `public.participants`. Os gabaritos são cadastrados pela interface.
+
+A tabela `public.participants` já deve existir no banco e é administrada por outro sistema. O corrigiAi apenas consulta o aluno pelo CPF e, após a confirmação humana, substitui `participants.grade` pela quantidade final de acertos. O CPF é consultado no formato `123.456.789-12`. CPF não encontrado impede a confirmação; nenhum aluno é criado pela aplicação.
 
 ## Executando
 
@@ -142,7 +144,7 @@ app/
 scripts/          # Configuração e ferramentas auxiliares
 tests/            # Testes automatizados
 docs/             # Imagens e materiais de referência
-instance/         # Banco, modelos OCR e temporários locais
+instance/         # Modelos OCR e temporários locais
 run.py            # Inicialização do servidor local
 ```
 
@@ -168,7 +170,7 @@ Esse teste adicional não mede a precisão da leitura de CPF manuscrito.
 - CPF manuscrito pode exigir preenchimento ou correção manual; a revisão humana é obrigatória.
 - Sombras, desfoque, cortes, papel curvo e perspectiva excessiva podem prejudicar o reconhecimento.
 - A validação atual usa o cartão de referência e imagens sintéticas; ainda é necessário avaliar uma amostra representativa de fotos reais.
-- Não há cadastro de alunos nem integração externa ativa para consulta ou envio de resultados.
+- A tabela externa `participants` deve conter ao menos as colunas `cpf` e `grade`, e cada CPF deve identificar somente um aluno. O valor de `cpf` deve usar o formato `123.456.789-12`.
 
 ## Privacidade
 

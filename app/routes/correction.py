@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import cv2
 from flask import Blueprint, current_app, session, request, redirect, url_for, render_template, flash, send_file, abort
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from .auth import login_required
 from app.models import db, Exam, Correction
 from app.omr.template_loader import load_template
@@ -13,7 +13,22 @@ from app.services.image_processor import load_image, process_card, ImageProcessi
 from app.services.cpf_detector import get_digit_recognizer
 from app.services.cpf_validator import normalize_cpf, validate_cpf
 from app.services.correction_service import compare_answers, apply_manual_answers, find_duplicates
+from app.services.student_repository import StudentRepository, StudentRepositoryError, StudentDuplicateError
 bp=Blueprint('correction',__name__)
+
+def student_lookup(cpf):
+    """Consulta o cadastro externo somente para um CPF já validado."""
+    if not validate_cpf(cpf):
+        return None, 'invalid'
+    try:
+        lookup = StudentRepository().find_by_cpf(cpf)
+        return lookup, 'found' if lookup.found else 'not_found'
+    except StudentDuplicateError:
+        current_app.logger.warning('Consulta de aluno encontrou CPF duplicado')
+        return None, 'duplicate'
+    except StudentRepositoryError as error:
+        current_app.logger.warning('Consulta de aluno indisponível: %s', type(error).__name__)
+        return None, 'error'
 
 def work_path():
     token=session.get('work_token','')
@@ -111,9 +126,15 @@ def review():
         draft.pop('duplicate_ids',None)
         save_draft(draft)
         if not validate_cpf(cpf): flash('CPF inválido. Confira os 11 dígitos e corrija antes de confirmar.','error')
-        else: return redirect(url_for('correction.confirm'))
+        else:
+            lookup, status = student_lookup(cpf)
+            if status == 'found': return redirect(url_for('correction.confirm'))
+            if status == 'not_found': flash('Aluno não encontrado. Corrija o CPF ou confirme o cadastro antes de continuar.','error')
+            elif status == 'duplicate': flash('Há mais de um aluno com este CPF. Corrija o cadastro antes de continuar.','error')
+            else: flash('Não foi possível consultar o cadastro de alunos. Tente novamente.','error')
     correct,wrong=compare_answers(draft['answers'],draft['key'])
-    return render_template('review.html',draft=draft,exam=exam,correct=correct,wrong=wrong)
+    lookup, student_status = student_lookup(draft['cpf']['value'])
+    return render_template('review.html',draft=draft,exam=exam,correct=correct,wrong=wrong,student_status=student_status)
 
 @bp.route('/confirm',methods=['GET','POST'])
 @login_required
@@ -123,6 +144,10 @@ def confirm():
         return redirect(url_for('main.detail',correction_id=session['last_correction']))
     draft=read_draft();cpf=draft['cpf']['value']
     if not validate_cpf(cpf): return redirect(url_for('correction.review'))
+    lookup, status = student_lookup(cpf)
+    if status != 'found':
+        flash('Aluno não encontrado.' if status == 'not_found' else 'Há mais de um aluno com este CPF. Corrija o cadastro antes de confirmar.' if status == 'duplicate' else 'Não foi possível consultar o cadastro de alunos.','error')
+        return redirect(url_for('correction.review'))
     exam=db.get_or_404(Exam,draft['exam_id']);duplicates=find_duplicates(exam.id,cpf)
     correct,wrong=compare_answers(draft['answers'],draft['key'])
     if request.method=='POST':
@@ -130,15 +155,26 @@ def confirm():
         if duplicates and (request.form.get('ack_duplicate')!='yes' or seen!=[d.id for d in duplicates]):
             flash('Já existe uma correção para este participante nesta prova. Confira e confirme uma nova versão.','error')
         else:
-            record=Correction(exam_id=exam.id,cpf=cpf,answers_json=draft['answers'],answer_key_json=draft['key'],correct_count=correct,wrong_count=wrong,manual_review=draft['cpf_manually_changed'] or any(a['manually_changed'] for a in draft['answers'].values()),submission_token=draft['submission_token'])
+            record=Correction(exam_id=exam.id,cpf=cpf,answers_json=draft['answers'],answer_key_json=draft['key'],correct_count=correct,wrong_count=wrong,manual_review=draft['cpf_manually_changed'] or any(a['manually_changed'] for a in draft['answers'].values()),external_sync_status='synced',submission_token=draft['submission_token'])
             db.session.add(record)
-            try: db.session.commit()
+            try:
+                # Both operations share the PostgreSQL transaction/session.
+                StudentRepository().update_grade_by_cpf(cpf, correct)
+                db.session.commit()
+            except StudentRepositoryError as error:
+                db.session.rollback()
+                flash(str(error),'error')
+                return redirect(url_for('correction.review'))
             except IntegrityError:
                 db.session.rollback();record=db.session.scalar(db.select(Correction).filter_by(submission_token=draft['submission_token']))
                 if record is None: raise
+            except SQLAlchemyError as error:
+                db.session.rollback()
+                current_app.logger.error('Falha ao confirmar correção: %s', type(error).__name__)
+                flash('Não foi possível salvar a correção. Tente novamente.','error')
+                return redirect(url_for('correction.confirm'))
             session['last_correction']=record.id;discard_work()
-            flash('Correção salva. A foto temporária foi apagada.','success')
+            flash('Correção salva e nota do aluno atualizada. A foto temporária foi apagada.','success')
             return redirect(url_for('main.detail',correction_id=record.id))
     draft['duplicate_ids']=[d.id for d in duplicates];save_draft(draft)
-    student=current_app.extensions['student_provider'].find_by_cpf(cpf)
-    return render_template('confirm.html',draft=draft,exam=exam,correct=correct,wrong=wrong,duplicates=duplicates,student=student)
+    return render_template('confirm.html',draft=draft,exam=exam,correct=correct,wrong=wrong,duplicates=duplicates)

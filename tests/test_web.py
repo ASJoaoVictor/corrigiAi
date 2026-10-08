@@ -2,6 +2,7 @@ import io
 import json
 import re
 import pytest
+from sqlalchemy import MetaData, Table, Column, Integer, String, select
 from werkzeug.security import generate_password_hash
 from app import create_app
 from app.models import db,Exam,AnswerKey,Correction
@@ -11,7 +12,11 @@ from app.services.correction_service import find_duplicates
 def app(tmp_path):
     app=create_app(dict(TESTING=True,SECRET_KEY='test-secret',ADMIN_USERNAME='admin',ADMIN_PASSWORD_HASH=generate_password_hash('test-password'),SQLALCHEMY_DATABASE_URI='sqlite://',WORK_DIR=str(tmp_path/'work'),DEBUG_OMR=False))
     with app.app_context():
-        db.create_all();exam=Exam(name='Prova teste');db.session.add(exam);db.session.flush();db.session.add(AnswerKey(exam_id=exam.id,answers_json={str(n):'A' for n in range(1,31)}));db.session.commit()
+        db.create_all()
+        external=Table('participants',MetaData(),Column('cpf',String(14)),Column('grade',Integer))
+        external.create(db.engine)
+        db.session.execute(external.insert().values(cpf='123.456.789-09',grade=None))
+        exam=Exam(name='Prova teste');db.session.add(exam);db.session.flush();db.session.add(AnswerKey(exam_id=exam.id,answers_json={str(n):'A' for n in range(1,31)}));db.session.commit()
     return app
 
 @pytest.fixture
@@ -68,7 +73,9 @@ def test_full_workflow_duplicates_cleanup(client,app):
         with app.app_context():
             records=find_duplicates(1,'12345678909');assert len(records)==version+1
             c=records[0];assert c.correct_count==1 and c.wrong_count==29 and c.manual_review
-            assert c.external_sync_status=='pending' and c.answers_json['1']['manually_changed']
+            assert c.external_sync_status=='synced' and c.answers_json['1']['manually_changed']
+            participants=Table('participants',MetaData(),autoload_with=db.engine)
+            assert db.session.execute(select(participants.c.grade).where(participants.c.cpf=='123.456.789-09')).scalar_one()==1
         assert not list(__import__('pathlib').Path(app.config['WORK_DIR']).iterdir())
         assert client.post('/confirm',data={'csrf_token':token}).status_code==302
         assert client.get(response.location).status_code==200
@@ -82,6 +89,30 @@ def test_invalid_cpf_cannot_save(client,app):
     assert 'CPF inválido' in response.text
     assert client.post('/confirm',data={'csrf_token':token}).location.endswith('/review')
     with app.app_context():assert db.session.query(Correction).count()==0
+
+def test_unknown_or_manually_changed_cpf_cannot_confirm(client,app):
+    token=login(client);upload(client,token);client.post('/process',data={'csrf_token':token})
+    response=client.post('/review',data={'csrf_token':token,'cpf':'529.982.247-25','q1':'A'})
+    assert response.status_code==200 and 'Aluno não encontrado' in response.text
+    assert client.get('/confirm').location.endswith('/review')
+    with app.app_context(): assert db.session.query(Correction).count()==0
+
+def test_invalid_cpf_does_not_query_student(client,monkeypatch):
+    from app.routes.correction import StudentRepository
+    monkeypatch.setattr(StudentRepository,'find_by_cpf',lambda self,cpf: (_ for _ in ()).throw(AssertionError('consulta indevida')))
+    token=login(client);upload(client,token);client.post('/process',data={'csrf_token':token})
+    response=client.post('/review',data={'csrf_token':token,'cpf':'11111111111'})
+    assert response.status_code==200 and 'CPF inválido' in response.text
+
+def test_student_update_failure_rolls_back_correction(client,app,monkeypatch):
+    from app.routes.correction import StudentRepository
+    from app.services.student_repository import StudentRepositoryError
+    monkeypatch.setattr(StudentRepository,'update_grade_by_cpf',lambda self,cpf,grade: (_ for _ in ()).throw(StudentRepositoryError('Falha controlada.')))
+    token=login(client);upload(client,token);client.post('/process',data={'csrf_token':token})
+    assert client.post('/review',data={'csrf_token':token,'cpf':'12345678909','q1':'A'}).location.endswith('/confirm')
+    response=client.post('/confirm',data={'csrf_token':token})
+    assert response.location.endswith('/review')
+    with app.app_context(): assert db.session.query(Correction).count()==0
 
 def test_bad_upload_and_size(client,app):
     token=login(client)

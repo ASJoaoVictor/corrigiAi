@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import pytest
-from app.services.cpf_validator import normalize_cpf,validate_cpf,mask_cpf
+from app.services.cpf_validator import format_cpf,normalize_cpf,validate_cpf,mask_cpf
 from app.omr.template_loader import load_template,pixel_rect
 from app.services.omr_processor import fill_ratio,classify_answer,detect_answers
 from app.services.correction_service import compare_answers,apply_manual_answers
@@ -10,6 +10,10 @@ from app.services.cpf_detector import detect_cpf
 
 @pytest.mark.parametrize('value,expected',[('123.456.789-09','12345678909'),(None,''),('abc12','12')])
 def test_normalize(value,expected): assert normalize_cpf(value)==expected
+
+@pytest.mark.parametrize('value,expected',[('12345678909','123.456.789-09'),('123.456.789-09','123.456.789-09'),('12','12')])
+def test_format_cpf(value,expected): assert format_cpf(value)==expected
+
 @pytest.mark.parametrize('value,expected',[('12345678909',True),('529.982.247-25',True),('12345678908',False),('11111111111',False),('',False),('123',False)])
 def test_validate(value,expected): assert validate_cpf(value)==expected
 

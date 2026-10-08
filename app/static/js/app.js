@@ -107,7 +107,10 @@ function validCPF(cpf) {
     return (digit===10 ? 0 : digit) === Number(cpf[size]);
   });
 }
-document.querySelector('#cpf')?.addEventListener('input', event => {
-  const cpf = event.target.value.replace(/[^0-9]/g,'');
+const cpfInput = document.querySelector('#cpf');
+cpfInput?.addEventListener('input', event => {
+  const cpf = event.target.value.replace(/[^0-9]/g,'').slice(0, 11);
+  event.target.value = cpf.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
   document.querySelector('#cpf-status').textContent = validCPF(cpf) ? 'CPF válido' : 'CPF inválido — confira os dígitos';
 });
+cpfInput?.dispatchEvent(new Event('input'));

@@ -12,8 +12,6 @@ from flask import Flask, session, request, abort, render_template, flash
 from .models import db, Exam
 from .services.cpf_validator import mask_cpf
 from sqlalchemy.exc import OperationalError, ProgrammingError
-from .services.integrations.student_provider import MockStudentProvider
-from .services.integrations.result_integration import NoOpResultIntegration
 
 
 def create_app(test_config=None):
@@ -21,11 +19,9 @@ def create_app(test_config=None):
     app=Flask(__name__,instance_relative_config=True)
     is_vercel = bool(os.getenv('VERCEL'))
     base_dir = Path('/tmp') if is_vercel else Path(app.instance_path)
-    database_url = os.getenv('DATABASE_URL')
+    database_url = os.getenv('DATABASE_URL') or (test_config or {}).get('SQLALCHEMY_DATABASE_URI')
     if not database_url:
-        if is_vercel and not (test_config or {}).get('SQLALCHEMY_DATABASE_URI'):
-            raise RuntimeError('Configure DATABASE_URL na Vercel; para teste temporário use sqlite:////tmp/database.db.')
-        database_url = f"sqlite:///{Path(app.instance_path) / 'database.db'}"
+        raise RuntimeError('Configure DATABASE_URL com a conexão PostgreSQL do Supabase antes de iniciar.')
     app.config.from_mapping(
         DEBUG=False,
         SECRET_KEY=os.getenv('SECRET_KEY'),
@@ -33,7 +29,7 @@ def create_app(test_config=None):
         ADMIN_PASSWORD_HASH=os.getenv('ADMIN_PASSWORD_HASH',''),
         SQLALCHEMY_DATABASE_URI=database_url,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
-        SQLALCHEMY_ENGINE_OPTIONS={'hide_parameters':True},
+        SQLALCHEMY_ENGINE_OPTIONS={'hide_parameters':True, 'pool_pre_ping':True},
         MAX_CONTENT_LENGTH=4*1024*1024,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
@@ -55,8 +51,6 @@ def create_app(test_config=None):
     db.init_app(app)
     app.extensions['digit_recognizer']=None
     app.extensions['digit_recognizer_lock']=threading.Lock()
-    app.extensions['student_provider']=MockStudentProvider()
-    app.extensions['result_integration']=NoOpResultIntegration()
     logging.basicConfig(level=logging.INFO)
     from .routes.auth import bp as auth
     from .routes.main import bp as main
@@ -94,7 +88,7 @@ def create_app(test_config=None):
     @app.errorhandler(ProgrammingError)
     def database_error(error):
         db.session.rollback()
-        return render_template('error.html',message='Banco de dados indisponível. Verifique DATABASE_URL e inicialize as tabelas com flask --app index init-db.'),503
+        return render_template('error.html',message='Banco de dados indisponível. Verifique DATABASE_URL e inicialize as tabelas com flask --app run.py init-db.'),503
     @app.errorhandler(500)
     def server_error(error):
         db.session.rollback()
