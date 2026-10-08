@@ -8,3 +8,4 @@ Pillow>=10,<13
 easyocr>=1.7,<2
 pytest>=8,<10
 gunicorn>=23,<24
+psycopg2-binary>=2.9,<3

@@ -27,6 +27,49 @@ A organização confere e ajusta a leitura antes de confirmar. O resultado é a 
 - **HTML, CSS e JavaScript:** interface adaptada ao celular.
 - **pytest:** testes automatizados.
 
+## Instalação com Docker
+
+Requer internet e [Docker Engine com Compose no Linux](https://docs.docker.com/engine/install/) ou [Docker Desktop no Windows](https://docs.docker.com/desktop/setup/install/windows-install/). No Windows, mantenha o Docker Desktop em execução com containers Linux. Não é necessário Python no computador.
+
+Baixe o projeto e abra um terminal na sua pasta.
+
+### Linux
+
+```bash
+chmod +x install.sh
+./install.sh
+```
+
+### Windows
+
+Execute no PowerShell:
+
+```powershell
+.\install.ps1
+```
+
+Se a política bloquear, após conferir o script, execute somente nesta nova sessão de processo (sem alterar a política global):
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+O instalador constrói a imagem e prepara o OCR; depois solicita usuário, senha e a **connection string PostgreSQL do Supabase** (`DATABASE_URL`). Use uma conexão acessível a partir do seu computador, como o pooler em modo sessão se a conexão direta exigir IPv6 indisponível. Senhas com caracteres especiais na URL devem estar codificadas como URL. A entrada de senha e URL fica oculta. A chave secreta é automática e somente o hash Werkzeug da senha é salvo. O `.env` guarda a URL com credenciais: não o compartilhe. Se já existir, escolha reutilizar ou confirme a reconfiguração.
+
+O instalador inicia o serviço, executa `flask --app run.py init-db` e aguarda `/health` por cerca de 60 segundos. Acesse **http://localhost:8000**. Pelo celular na mesma rede, use `http://IP-DO-COMPUTADOR:8000`; o endereço sugerido pode variar com VPNs e interfaces de rede. Se necessário, confira a porta 8000 no firewall; o instalador não altera regras.
+
+Nesta versão, `init-db` cria somente `exam`, `answer_key` e `correction`, preservando dados e sem modificar a tabela externa `public.participants`. A aplicação consulta participantes pelo CPF e atualiza a nota após confirmação humana. O Compose usa o banco do Supabase; volumes legados existentes não são apagados pelo instalador.
+
+Para parar sem apagar volumes:
+
+```bash
+docker compose down
+```
+
+Para diagnóstico: `docker compose logs web` (revise possíveis credenciais antes de compartilhar logs). Você pode executar o instalador novamente; ele não remove dados ou volumes. O healthcheck valida a resposta HTTP interna do container; a conexão ao banco é verificada pelo `init-db`, e firewall/acesso pelo celular precisam ser conferidos na rede local.
+
+As seções seguintes descrevem a instalação manual para desenvolvimento.
+
 ## Requisitos
 
 - Python 3.10 ou superior e pip.
