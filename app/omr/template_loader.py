@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
-ROOT = Path(__file__).parent
+from app.runtime import resource_path
+ROOT = resource_path('app', 'omr')
 
 def load_template(template_id='opi_fundamental_2026'):
     if template_id != 'opi_fundamental_2026':

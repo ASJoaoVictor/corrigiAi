@@ -8,8 +8,9 @@ from .cpf_validator import validate_cpf
 log=logging.getLogger(__name__)
 
 class EasyOCRDigitRecognizer:
-    def __init__(self, model_directory):
+    def __init__(self, model_directory, user_network_directory=None):
         self.directory=model_directory
+        self.user_network_directory=user_network_directory or str(Path(model_directory)/'user_network')
         self.reader=None
         self.lock=threading.Lock()
 
@@ -17,7 +18,7 @@ class EasyOCRDigitRecognizer:
         with self.lock:
             if self.reader is None:
                 import easyocr
-                self.reader=easyocr.Reader(['en'],gpu=False,detector=False,model_storage_directory=self.directory,user_network_directory=str(Path(self.directory)/'user_network'),download_enabled=False,verbose=False)
+                self.reader=easyocr.Reader(['en'],gpu=False,detector=False,model_storage_directory=self.directory,user_network_directory=self.user_network_directory,download_enabled=False,verbose=False)
             enlarged=cv2.resize(cell,None,fx=4,fy=4,interpolation=cv2.INTER_CUBIC)
             enlarged=cv2.copyMakeBorder(enlarged,20,20,20,20,cv2.BORDER_CONSTANT,value=255)
             results=self.reader.recognize(enlarged,allowlist='0123456789',detail=1,paragraph=False)
@@ -52,6 +53,9 @@ def get_digit_recognizer(app):
     with app.extensions['digit_recognizer_lock']:
         recognizer = app.extensions.get('digit_recognizer')
         if recognizer is None:
-            recognizer = EasyOCRDigitRecognizer(app.config['OCR_MODEL_DIR'])
+            options = {}
+            if app.config.get('OCR_USER_NETWORK_DIR'):
+                options['user_network_directory'] = app.config['OCR_USER_NETWORK_DIR']
+            recognizer = EasyOCRDigitRecognizer(app.config['OCR_MODEL_DIR'], **options)
             app.extensions['digit_recognizer'] = recognizer
         return recognizer

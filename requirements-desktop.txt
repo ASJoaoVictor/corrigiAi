@@ -1,0 +1,5 @@
+-r requirements.txt
+waitress>=3.0.2,<4
+qrcode>=8,<9
+psutil>=6,<8
+pywin32>=308; sys_platform == "win32"

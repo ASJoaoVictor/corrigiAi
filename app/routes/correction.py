@@ -99,7 +99,12 @@ def discard():
 def process():
     path=work_path();exam=selected_exam()
     if (path/'draft.json').exists(): return redirect(url_for('correction.review'))
+    lock=current_app.extensions['processing_lock']
+    if not lock.acquire(blocking=False):
+        flash('O sistema está processando outro cartão. Aguarde alguns segundos.','error')
+        return redirect(url_for('correction.preview'))
     try:
+        if (path/'draft.json').exists(): return redirect(url_for('correction.review'))
         template=load_template(exam.template_id)
         result=process_card(path/'photo.jpg',template,get_digit_recognizer(current_app),path/'debug' if current_app.config['DEBUG_OMR'] else None)
         result.update(exam_id=exam.id,key=exam.answer_key.answers_json,submission_token=secrets.token_hex(32),cpf_manually_changed=False)
@@ -112,6 +117,8 @@ def process():
         current_app.logger.error('[OMR] Falha interna durante processamento')
         flash('Falha no processamento. Tente novamente ou tire outra foto.','error')
         return redirect(url_for('correction.preview'))
+    finally:
+        lock.release()
 
 @bp.route('/review',methods=['GET','POST'])
 @login_required

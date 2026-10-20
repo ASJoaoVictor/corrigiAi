@@ -14,9 +14,14 @@ from .services.cpf_validator import mask_cpf
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 
-def create_app(test_config=None):
-    load_dotenv()
-    app=Flask(__name__,instance_relative_config=True)
+def create_app(test_config=None, *, load_environment=True):
+    if load_environment:
+        load_dotenv()
+    from .runtime import resource_path
+    app=Flask(__name__,instance_relative_config=True,
+              instance_path=(test_config or {}).get('INSTANCE_PATH'),
+              template_folder=str(resource_path('app', 'templates')),
+              static_folder=str(resource_path('app', 'static')))
     is_vercel = bool(os.getenv('VERCEL'))
     base_dir = Path('/tmp') if is_vercel else Path(app.instance_path)
     database_url = os.getenv('DATABASE_URL') or (test_config or {}).get('SQLALCHEMY_DATABASE_URI')
@@ -49,6 +54,7 @@ def create_app(test_config=None):
     Path(app.config['WORK_DIR']).mkdir(parents=True,exist_ok=True,mode=0o700)
     Path(app.config['OCR_MODEL_DIR']).mkdir(parents=True,exist_ok=True)
     db.init_app(app)
+    app.extensions['processing_lock']=threading.Lock()
     app.extensions['digit_recognizer']=None
     app.extensions['digit_recognizer_lock']=threading.Lock()
     logging.basicConfig(level=logging.INFO)
@@ -88,14 +94,18 @@ def create_app(test_config=None):
     @app.errorhandler(ProgrammingError)
     def database_error(error):
         db.session.rollback()
-        return render_template('error.html',message='Banco de dados indisponível. Verifique DATABASE_URL e inicialize as tabelas com flask --app run.py init-db.'),503
+        message = ('Não foi possível acessar o banco de dados. Verifique sua conexão com a internet e tente novamente.'
+                   if app.config.get('DESKTOP_MODE') else
+                   'Banco de dados indisponível. Verifique DATABASE_URL e inicialize as tabelas com flask --app run.py init-db.')
+        return render_template('error.html',message=message),503
     @app.errorhandler(500)
     def server_error(error):
         db.session.rollback()
         return render_template('error.html',message='Não foi possível concluir. Tente novamente; se persistir, contate a organização.'),500
     @app.cli.command('init-db')
     def init_db():
-        db.create_all()
+        from .database import initialize_database
+        initialize_database()
         click.echo('Banco de dados inicializado. Cadastre uma prova em Gabaritos.')
     @app.cli.command('cleanup-temp')
     def cleanup_command():

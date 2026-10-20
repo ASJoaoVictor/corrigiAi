@@ -27,6 +27,23 @@ A organização confere e ajusta a leitura antes de confirmar. O resultado é a 
 - **HTML, CSS e JavaScript:** interface adaptada ao celular.
 - **pytest:** testes automatizados.
 
+Há três modos de execução: desenvolvimento Python, servidor Docker e Windows
+instalado. Todos mantêm a aplicação Flask acessível pelo navegador.
+
+## Windows
+
+- Baixe `corrigiAi-Setup.msi` disponibilizado pela organização e instale.
+- Abra **corrigiAi** pelo Menu Iniciar.
+- Na primeira execução, informe a conexão Supabase, o usuário administrador e a senha.
+- Aguarde o servidor iniciar e escaneie o QR Code com o celular na mesma Wi-Fi.
+- Faça login e use o fluxo normal de correção. Mantenha a janela aberta durante o uso.
+
+Não exige Python, Docker ou terminal. O computador precisa de internet para o
+Supabase e a rede Windows deve ser privada. A configuração protegida e os logs
+ficam em `%LOCALAPPDATA%\corrigiAi`. Fechar a janela encerra o servidor.
+O instalador pode ser gerado pelo GitHub Actions, mesmo desenvolvendo no Linux; instruções e checklist de
+validação estão em [docs/windows-build.md](docs/windows-build.md).
+
 ## Instalação com Docker
 
 Requer internet e [Docker Engine com Compose no Linux](https://docs.docker.com/engine/install/) ou [Docker Desktop no Windows](https://docs.docker.com/desktop/setup/install/windows-install/). No Windows, mantenha o Docker Desktop em execução com containers Linux. Não é necessário Python no computador.

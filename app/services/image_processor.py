@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 from app.omr.template_loader import pixel_rect
+from app.runtime import resource_path
 from .omr_processor import detect_answers
 from .cpf_detector import detect_cpf
 log=logging.getLogger(__name__)
@@ -88,7 +89,7 @@ def process_card(path,template,recognizer,debug_dir=None):
         log.info('[OMR] Template carregado: %s',template['name'])
         document=original.copy();quad=detect_document(original)
         if quad is not None: cv2.polylines(document,[quad],True,(0,200,0),3)
-        reference=cv2.imread(str(Path(__file__).parents[1]/'omr/reference.png'))
+        reference=cv2.imread(str(resource_path('app', 'omr', 'reference.png')))
         if reference is None: raise ImageProcessingError('Referência do modelo indisponível.')
         warped=correct_perspective(original,reference,template)
         gray=normalize_image(warped);threshold=apply_threshold(gray)

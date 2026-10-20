@@ -9,3 +9,7 @@ processed/
 data/
 backups/
 playwright-report/
+# Windows build artifacts (never commit packaged data)
+build/
+dist/
+*.wixpdb

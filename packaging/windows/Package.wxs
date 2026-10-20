@@ -1,0 +1,26 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:fire="http://wixtoolset.org/schemas/v4/wxs/firewall">
+  <Package Name="corrigiAi" Manufacturer="corrigiAi" Version="$(var.AppVersion)"
+           UpgradeCode="63EA7DDD-C428-42ED-A17D-8F7450BD9C1B" Scope="perMachine" Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="Uma versão mais recente do corrigiAi já está instalada." />
+    <MediaTemplate EmbedCab="yes" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="corrigiAi">
+        <Component Id="Launcher" Guid="*" Bitness="always64">
+          <File Id="LauncherExe" Source="$(var.DistDir)\corrigiAi.exe" KeyPath="yes">
+            <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="corrigiAi" WorkingDirectory="INSTALLFOLDER" Advertise="yes" />
+            <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="corrigiAi" WorkingDirectory="INSTALLFOLDER" Advertise="yes" />
+            <fire:FirewallException Id="LocalServerFirewall" Name="corrigiAi Local Server"
+                Port="$(var.AppPort)" Protocol="tcp" Profile="private" Scope="localSubnet" IgnoreFailure="no" />
+          </File>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+    <Feature Id="Main" Title="corrigiAi" Level="1">
+      <ComponentRef Id="Launcher" />
+      <ComponentGroupRef Id="Payload" />
+    </Feature>
+  </Package>
+</Wix>

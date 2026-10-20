@@ -22,3 +22,8 @@ ocr-models
 *.log
 docs
 playwright-report
+
+# Exclude locally generated Windows distributions from Docker context.
+build
+dist
+*.wixpdb

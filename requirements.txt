@@ -7,5 +7,5 @@ numpy>=1.26,<3
 Pillow>=10,<13
 easyocr>=1.7,<2
 pytest>=8,<10
-gunicorn>=23,<24
+gunicorn>=23,<24; sys_platform != "win32"
 psycopg2-binary>=2.9,<3

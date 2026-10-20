@@ -28,6 +28,7 @@ def test_local_defaults(config_env):
         create_app()
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason='Vercel utiliza caminhos POSIX no runtime Linux')
 def test_vercel_defaults(config_env, monkeypatch):
     monkeypatch.setenv('VERCEL', '1')
     monkeypatch.setenv('DATABASE_URL', 'sqlite:////tmp/database.db')

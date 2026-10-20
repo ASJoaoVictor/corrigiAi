@@ -56,3 +56,25 @@ def test_key_snapshot_does_not_change_mid_review(client,app):
     client.get('/confirm');client.post('/confirm',data={'csrf_token':token})
     with app.app_context():
         c=db.session.scalar(db.select(Correction));assert c.correct_count==1 and c.answer_key_json['1']=='A'
+
+
+def test_processing_busy_does_not_start_ocr(client, app, monkeypatch):
+    token=login(client);upload(client,token)
+    def unexpected(*args, **kwargs): raise AssertionError('OCR não deve iniciar')
+    monkeypatch.setattr('app.routes.correction.process_card', unexpected)
+    lock=app.extensions['processing_lock']
+    lock.acquire()
+    try:
+        response=client.post('/process',data={'csrf_token':token},follow_redirects=True)
+        assert 'processando outro cartão' in response.text
+        assert lock.locked()
+    finally: lock.release()
+
+
+def test_processing_failure_releases_lock(client, app, monkeypatch):
+    token=login(client);upload(client,token)
+    def fail(*args, **kwargs): raise ValueError('Falha controlada')
+    monkeypatch.setattr('app.routes.correction.process_card', fail)
+    response=client.post('/process',data={'csrf_token':token})
+    assert response.location.endswith('/preview')
+    assert not app.extensions['processing_lock'].locked()
