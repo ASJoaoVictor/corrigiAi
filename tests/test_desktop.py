@@ -228,3 +228,33 @@ def test_payload_inventory_and_secrets_rejected(tmp_path):
     assert len(files) == 5  # EXE is defined by Package.wxs, not duplicated
     (root / '.env').write_text('private')
     with pytest.raises(ValueError, match='não permitido'): generate_payload(root, output)
+
+
+@pytest.mark.parametrize('state,detail,expected', [
+    ('28P01', 'sensitive password', 'recusou as credenciais'),
+    (None, 'password authentication failed for user private', 'recusou as credenciais'),
+    (None, 'Tenant or user not found', 'não reconheceu'),
+    ('42501', 'sensitive statement', 'permissões necessárias'),
+    ('3D000', 'sensitive database name', 'não existe'),
+    (None, 'could not translate host name private-host', 'localizar o servidor'),
+    (None, 'SSL certificate verify failed private-host', 'conexão SSL'),
+    (None, 'connection timed out private-host', 'não respondeu'),
+    (None, 'unexpected sensitive detail', 'Não foi possível acessar'),
+])
+def test_database_failure_messages_never_reveal_driver_details(state, detail, expected):
+    from desktop.database import database_failure
+    from sqlalchemy.exc import OperationalError
+    driver = RuntimeError(detail + ' postgresql://user:private-password@private-host/db')
+    driver.sqlstate = state
+    reason, message = database_failure(OperationalError('SELECT private', {}, driver), 'connect')
+    assert expected in message
+    assert 'private-password' not in message and 'private-host' not in message
+    assert 'SELECT private' not in message
+    assert reason in ('authentication', 'pooler_identity', 'permissions', 'database_name', 'dns', 'ssl', 'network', 'unknown')
+
+
+def test_database_initialization_error_distinguished_from_connection_error():
+    from desktop.database import database_failure
+    reason, message = database_failure(RuntimeError('permission denied'), 'initialize')
+    assert reason == 'permissions'
+    assert 'A conexão foi estabelecida' in message

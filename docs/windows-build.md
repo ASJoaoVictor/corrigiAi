@@ -131,6 +131,32 @@ vazamento de credenciais/CPF. Isso limita a profundidade do diagnóstico.
 Temporários expiram em uma hora e são removidos na confirmação/descarte/logout;
 o encerramento normal do launcher remove seu diretório temp após parar o servidor.
 
+## Diagnosticar acesso ao banco
+
+Na primeira configuração, use a URL de **Connect → Session pooler** do projeto
+Supabase, com o usuário completo e a senha real do banco (não a senha da conta).
+Não inclua aspas ao colar no campo da janela. Confira o parâmetro SSL recomendado
+pelo Supabase (`sslmode=require`; se a URL já possui `?`, acrescente com `&`).
+A ausência desse parâmetro, isoladamente, não comprova a causa de uma falha.
+
+O launcher diferencia credenciais recusadas, projeto/usuário do pooler incorreto,
+resolução DNS, timeout/rede, SSL, banco inexistente e falta de permissões. Também
+informa quando a conexão funcionou, mas a criação das tabelas próprias falhou.
+Mensagens não reconhecidas continuam com orientação genérica. Nenhuma mensagem
+bruta do driver ou senha é exibida ou registrada.
+Os logs contêm códigos seguros como `database_connect_authentication`,
+`database_connect_network` ou `database_initialize_permissions`.
+A verificação lê apenas os metadados e executa `SELECT cpf, grade ... LIMIT 0`
+para validar permissão de leitura sem retornar dados pessoais. Não altera participants.
+
+Se houver timeout, confirme projeto ativo, host/porta e conectividade a partir do
+computador que executa o aplicativo; tente outra rede para distinguir bloqueio local.
+Se houver erro de permissão, peça ao administrador do banco para revisar os acessos;
+não conceda privilégios globais indiscriminadamente. Falhas não reconhecidas precisam
+de diagnóstico adicional pelo responsável, sem compartilhar URLs com senha.
+Atualizações dessas mensagens exigem gerar e instalar um MSI novo; não modificam
+uma instalação já distribuída.
+
 ## Rede, interface e encerramento
 
 `desktop/network.py` enumera interfaces ativas por psutil, aceita somente RFC1918

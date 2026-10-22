@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 DEFAULT_PORT = 8000
-VERSION = '0.1.0'
+VERSION = '0.1.1'
 
 
 def resource_path(*parts):
