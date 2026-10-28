@@ -2,6 +2,15 @@ name: Instalador Windows
 
 on:
   workflow_dispatch:
+    inputs:
+      edition:
+        description: Edição do instalador
+        type: choice
+        required: true
+        default: postgres
+        options:
+          - postgres
+          - sqlite-test
 
 permissions:
   contents: read
@@ -21,6 +30,7 @@ jobs:
     env:
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
       PYTHONUTF8: '1'
+      BUILD_EDITION: ${{ inputs.edition }}
 
     steps:
       - name: Obter código
@@ -44,24 +54,25 @@ jobs:
       - name: Testar e gerar executável e MSI
         run: |
           $Python = Join-Path $env:pythonLocation 'python.exe'
-          ./scripts/build_windows.ps1 -PythonExecutable $Python
+          ./scripts/build_windows.ps1 -PythonExecutable $Python -Edition $env:BUILD_EDITION
 
       - name: Registrar checksum e dependências
         run: |
-          $Installer = 'dist/corrigiAi-Setup.msi'
+          $InstallerName = if ($env:BUILD_EDITION -eq 'sqlite-test') { 'corrigiAi-Testes-Setup.msi' } else { 'corrigiAi-Setup.msi' }
+          $Installer = Join-Path 'dist' $InstallerName
           if (!(Test-Path $Installer)) { throw 'O instalador não foi gerado.' }
           $Hash = (Get-FileHash $Installer -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$Hash  corrigiAi-Setup.msi" | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+          "$Hash  $InstallerName" | Set-Content dist/SHA256SUMS.txt -Encoding ascii
           & ./.venv-windows-build/Scripts/python.exe -m pip freeze | Set-Content dist/build-dependencies.txt -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw 'Falha ao registrar dependências.' }
-          "Instalador gerado. Baixe o artefato corrigiAi-Windows-MSI abaixo e extraia o ZIP." >> $env:GITHUB_STEP_SUMMARY
+          "Instalador gerado. Baixe o artefato da edição $env:BUILD_EDITION abaixo e extraia o ZIP." >> $env:GITHUB_STEP_SUMMARY
 
       - name: Disponibilizar instalador para download
         uses: actions/upload-artifact@v6
         with:
-          name: corrigiAi-Windows-MSI
+          name: corrigiAi-Windows-MSI${{ inputs.edition == 'sqlite-test' && '-Testes' || '' }}
           path: |
-            dist/corrigiAi-Setup.msi
+            dist/*Setup.msi
             dist/SHA256SUMS.txt
             dist/build-dependencies.txt
           if-no-files-found: error

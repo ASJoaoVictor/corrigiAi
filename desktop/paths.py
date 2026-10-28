@@ -22,9 +22,9 @@ class AppPaths:
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
 
 
-def application_paths(environ=None):
+def application_paths(environ=None, *, sqlite_test=False):
     environ = os.environ if environ is None else environ
     base = environ.get('LOCALAPPDATA')
     if not base:
         raise ValueError('O diretório de dados do usuário Windows não está disponível.')
-    return AppPaths(Path(base) / 'corrigiAi')
+    return AppPaths(Path(base) / ('corrigiAi-Testes' if sqlite_test else 'corrigiAi'))

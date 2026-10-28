@@ -41,7 +41,7 @@ class StudentRepository:
         if cached is not None:
             return cached
         try:
-            # SQLite is supported only by the automated tests. PostgreSQL uses
+            # SQLite is used by the explicit local test edition and automated tests. PostgreSQL uses
             # the explicit public schema required by the production database.
             schema = 'public' if db.engine.dialect.name == 'postgresql' else None
             table = Table('participants', MetaData(), schema=schema, autoload_with=db.engine)

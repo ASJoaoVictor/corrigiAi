@@ -44,6 +44,17 @@ ficam em `%LOCALAPPDATA%\corrigiAi`. Fechar a janela encerra o servidor.
 O instalador pode ser gerado pelo GitHub Actions, mesmo desenvolvendo no Linux; instruções e checklist de
 validação estão em [docs/windows-build.md](docs/windows-build.md).
 
+### Edição de testes com SQLite
+
+Também existe o instalador separado **corrigiAi-Testes-Setup.msi**. Ele pede somente
+usuário e senha, cria `Área de Trabalho\corrigiAi Testes\corrigiai-testes.sqlite3`
+e usa apenas esse banco local, sem importar ou enviar dados ao Supabase.
+Abra **corrigiAi Testes** e use **Cadastrar CPFs de teste** para adicionar dados
+fictícios antes de confirmar correções. O acesso é pela porta 8001, com QR Code.
+A edição principal continua disponível e usa PostgreSQL na porta 8000.
+Para gerar a edição local no GitHub Actions, selecione **sqlite-test** no campo
+**edition** de **Run workflow**. Os passos completos estão na documentação de build.
+
 ## Instalação com Docker
 
 Requer internet e [Docker Engine com Compose no Linux](https://docs.docker.com/engine/install/) ou [Docker Desktop no Windows](https://docs.docker.com/desktop/setup/install/windows-install/). No Windows, mantenha o Docker Desktop em execução com containers Linux. Não é necessário Python no computador.

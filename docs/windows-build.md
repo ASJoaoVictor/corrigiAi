@@ -16,7 +16,8 @@ branch padrão para aparecer no botão de execução manual.
 1. Abra o repositório no GitHub e entre em **Actions**.
 2. Se solicitado, habilite os workflows do repositório.
 3. Selecione **Instalador Windows** e clique em **Run workflow**.
-4. Escolha a branch com o código e confirme **Run workflow**.
+4. Escolha a branch e a edição: **postgres** mantém o instalador principal;
+   **sqlite-test** gera o instalador de testes local. Confirme **Run workflow**.
 5. Aguarde a execução ficar verde. Abra a execução e, em **Artifacts**, baixe
    **corrigiAi-Windows-MSI**.
 6. Extraia o ZIP: o instalador é `corrigiAi-Setup.msi`. O pacote também inclui o
@@ -35,6 +36,51 @@ O workflow só executa após ser enviado ao GitHub; criar o arquivo localmente n
 inicia o build. Confira o consumo de minutos e armazenamento do seu plano GitHub.
 O MSI ainda não possui assinatura digital: valide-o pelo checklist de Windows limpo
 antes da distribuição. O build automático não comprova interface, firewall ou LAN.
+
+## Edição local para testes (SQLite)
+
+A edição **sqlite-test** é um produto separado chamado **corrigiAi Testes**.
+Compartilha o Flask e o processamento, mas não pede DATABASE_URL e nunca carrega
+configuração PostgreSQL. Seu entrypoint é `corrigiai_testes.py`, que ativa
+explicitamente o modo local. A configuração SQLite é rejeitada pelo launcher
+principal e uma URL PostgreSQL é rejeitada pelo modo de testes.
+
+- Instalador: `dist/corrigiAi-Testes-Setup.msi`.
+- GitHub: Run workflow → edition **sqlite-test** → artefato **corrigiAi-Windows-MSI-Testes**.
+- Instalação/atalhos: **corrigiAi Testes**, com UpgradeCode próprio; não substitui o produto principal.
+- Configuração DPAPI, logs e temporários: `%LOCALAPPDATA%\corrigiAi-Testes`.
+- Banco: `<Área de Trabalho do usuário>\corrigiAi Testes\corrigiai-testes.sqlite3`.
+- Porta: **8001**; firewall privado **corrigiAi Testes Local Server**.
+- Cookies próprios permitem usar as duas edições no mesmo navegador.
+
+A Área de Trabalho é resolvida pela API do shell Windows, respeitando redirecionamento
+(por exemplo, OneDrive). O banco é criado na primeira execução e reutilizado nas
+seguintes; fechar/desinstalar não o apaga. Se a Área de Trabalho for sincronizada,
+o arquivo pode ser sincronizado pelo provedor; não use o mesmo SQLite aberto em
+computadores distintos. Use somente dados fictícios, não dados do banco principal.
+A aplicação mostra um aviso de modo de testes e o launcher mostra o caminho do banco.
+
+Na primeira execução, informe usuário e senha local. A SECRET_KEY é automática.
+O banco inclui as três tabelas corrigiAi e uma `participants` exclusivamente local.
+Nenhum participante real é importado. Após login, use **Cadastrar CPFs de teste**
+para cadastrar CPFs fictícios com dígitos verificadores válidos, mantendo a regra de
+que o participante precisa existir antes da confirmação. Notas/histórico ficam só
+no SQLite. Autenticação, CSRF, cálculo de nota e fluxo de revisão são preservados.
+O banco não exige internet após a instalação; OCR continua empacotado.
+
+Build manual da edição de testes:
+
+```powershell
+.\scripts\build_windows.ps1 -Edition sqlite-test
+```
+
+Sem `-Edition`, o script continua gerando a edição **postgres**. Ambos usam
+`dist/corrigiAi` como staging do onedir; seu conteúdo corresponde ao último build.
+Para verificar o produto local no Windows: instale as duas edições, confira atalhos
+separados, inicie ambas (portas 8000/8001), configure o local sem URL, cadastre um CPF
+fictício, corrija um cartão, reinicie e confira persistência no SQLite. Com a internet
+desconectada, repita o fluxo local. Confirme que configuração/banco principal não
+mudaram. Desinstale apenas Testes e confira que o SQLite e a edição principal permanecem.
 
 ## Ambiente de build
 
@@ -77,7 +123,7 @@ python scripts/windows_payload.py dist/corrigiAi build/Payload.wxs
 $AppVersion = python -c "from app.runtime import VERSION; print(VERSION)"
 $AppPort = python -c "from app.runtime import DEFAULT_PORT; print(DEFAULT_PORT)"
 wix extension add WixToolset.Firewall.wixext/4.0.6
-wix build packaging/windows/Package.wxs build/Payload.wxs -arch x64 -ext WixToolset.Firewall.wixext/4.0.6 -d "AppVersion=$AppVersion" -d "AppPort=$AppPort" -d "DistDir=$PWD\dist\corrigiAi" -o dist/corrigiAi-Setup.msi
+wix build packaging/windows/Package.wxs build/Payload.wxs -arch x64 -ext WixToolset.Firewall.wixext/4.0.6 -d "ProductName=corrigiAi" -d "InstallName=corrigiAi" -d "UpgradeCode=63EA7DDD-C428-42ED-A17D-8F7450BD9C1B" -d "AppVersion=$AppVersion" -d "AppPort=$AppPort" -d "DistDir=$PWD\dist\corrigiAi" -o dist/corrigiAi-Setup.msi
 ```
 
 O spec inclui templates, static, referência PNG, JSONs do OMR, modelos OCR e dados,
@@ -228,3 +274,5 @@ publicação: os testes Linux não comprovam o funcionamento do MSI/DPAPI/OCR em
 - [PyInstaller: spec files e COLLECT/onedir](https://pyinstaller.org/en/stable/spec-files.html)
 - [Waitress: servidor WSGI](https://docs.pylonsproject.org/projects/waitress/en/stable/)
 - [WiX: FirewallException](https://docs.firegiant.com/wix/schema/firewall/firewallexception/)
+
+Referências da edição local: [SQLite no SQLAlchemy](https://docs.sqlalchemy.org/en/20/dialects/sqlite.html) e [diretórios do shell Windows](https://learn.microsoft.com/en-us/windows/win32/shell/csidl).

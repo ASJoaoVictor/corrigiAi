@@ -1,0 +1,10 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Cadastrar CPF de teste</h1>
+<p>Cadastre o CPF fictício que será usado na revisão do cartão. Nenhum participante do banco principal é importado.</p>
+<form method="post" class="card">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label for="cpf">CPF fictício com dígitos verificadores válidos</label>
+<input id="cpf" name="cpf" inputmode="numeric" maxlength="14" required>
+<button>Cadastrar para testes</button>
+</form>
+{% endblock %}

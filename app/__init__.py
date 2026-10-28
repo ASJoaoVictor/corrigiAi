@@ -63,6 +63,9 @@ def create_app(test_config=None, *, load_environment=True):
     from .routes.answer_key import bp as keys
     from .routes.correction import bp as correction
     for bp in (auth,main,keys,correction): app.register_blueprint(bp)
+    if app.config.get('SQLITE_TEST_MODE'):
+        from .routes.test_participants import bp as test_participants
+        app.register_blueprint(test_participants)
     app.jinja_env.filters['mask_cpf']=mask_cpf
     @app.get('/health')
     def health():
@@ -94,6 +97,8 @@ def create_app(test_config=None, *, load_environment=True):
     @app.errorhandler(ProgrammingError)
     def database_error(error):
         db.session.rollback()
+        if app.config.get('SQLITE_TEST_MODE'):
+            return render_template('error.html', message='Não foi possível acessar o SQLite de testes. Confira o arquivo e as permissões da Área de Trabalho.'), 503
         message = ('Não foi possível acessar o banco de dados. Verifique sua conexão com a internet e tente novamente.'
                    if app.config.get('DESKTOP_MODE') else
                    'Banco de dados indisponível. Verifique DATABASE_URL e inicialize as tabelas com flask --app run.py init-db.')
